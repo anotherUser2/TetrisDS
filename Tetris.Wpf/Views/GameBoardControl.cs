@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Tetris.Core;
 using Tetris.Wpf.ViewModels;
 
@@ -22,8 +23,13 @@ public sealed class GameBoardControl : FrameworkElement
         InvalidateVisual();
     }
 
-    private void OnChanged(object? sender, EventArgs e) =>
-        Dispatcher.Invoke(InvalidateVisual);
+    private void OnChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+            InvalidateVisual();
+        else
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, InvalidateVisual);
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -81,6 +87,10 @@ public sealed class GameBoardControl : FrameworkElement
             foreach (var (x, y) in _vm.CurrentPiece.GetAbsoluteCells())
                 if (y >= 0 && y < board.Height)
                     DrawCell(dc, x, y, color);
+
+            // ── Эффекты ────────────────────────────────────────────
+            foreach (var effect in _vm.Effects.Active)
+                effect.Render(dc, CellSize, _vm.Board.Width, _vm.Board.Height);
         }
     }
 

@@ -20,7 +20,9 @@ public partial class MainWindow : Window
         BoardControl.Bind(_vm);
         NextControl.Bind(_vm);   // <-- добавили
         _vm.Start();
+        Activate();
         Focus();
+        Keyboard.Focus(this);
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)
@@ -32,15 +34,16 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
-            case Key.Left: _vm.MoveLeft(); break;
-            case Key.Right: _vm.MoveRight(); break;
-            case Key.Down: _vm.MoveDown(); break;
+            case Key.Left: _vm.MoveLeftNow(); break;
+            case Key.Right: _vm.MoveRightNow(); break;
+            case Key.Down: _vm.MoveDownNow(); break;
             case Key.Up: _vm.Rotate(); break;
             case Key.Space: _vm.HardDrop(); break;
             case Key.P: _vm.TogglePause(); break;
             case Key.R: Restart(); break;
             case Key.G: _vm.ToggleGhost(); break;
             case Key.Escape: _vm.SetStatusText("Bye!"); Thread.Sleep(1000); Close(); break;
+            default: return;    // не помечаем чужие клавиши как обработанные
         }
 
         e.Handled = true;

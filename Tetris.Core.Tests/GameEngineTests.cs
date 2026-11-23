@@ -95,7 +95,7 @@ public class GameEngineTests
         while (engine.MoveDown()) { }
 
         // Теперь фигура не может двигаться дальше — Tick должен её зафиксировать
-        bool locked = engine.Tick();
+        bool locked = engine.Tick(engine.LockDelayMilliseconds);
 
         Assert.True(locked);
         Assert.True(engine.Board.IsOccupied(3, 3));
@@ -105,15 +105,14 @@ public class GameEngineTests
     }
 
     [Fact]
-    public void HardDrop_LocksAtBottom()
+    public void HardDrop_MovesPieceToBottom()
     {
-        var board = new Board(10, 20);
-        var t0 = TetrominoType.O;
-        var fpp = new FixedPieceProvider(t0, t0);
-        var engine = new GameEngine(board, fpp);
+        var engine = new GameEngine(new Board(10, 20), new FixedPieceProvider(TetrominoType.O, TetrominoType.O));
         engine.HardDrop();
-        Assert.True(engine.Board.IsOccupied(3, 19));
-        Assert.True(engine.Board.IsOccupied(4, 19));
+        // Фигура на земле, но не зафиксирована (lock delay ещё идёт)
+        Assert.True(engine.IsGrounded);
+        Assert.Equal(18, engine.CurrentPiece.Y);   // O высотой 2, доска 20 → Y=18
+        Assert.False(engine.Board.IsOccupied(3, 19));
     }
 
     [Fact]
@@ -202,12 +201,16 @@ public class GameEngineTests
     [Fact]
     public void NextPieceType_UpdatesAfterLock()
     {
-        var provider = new FixedPieceProvider(TetrominoType.O, TetrominoType.T, TetrominoType.I);
-        var engine = new GameEngine(new Board(4, 4), provider);
+        var provider = new FixedPieceProvider(
+            TetrominoType.O,   // первая фигура
+            TetrominoType.T,   // next
+            TetrominoType.I);  // следующий next
+        var engine = new GameEngine(new Board(10, 20), provider);
+
         Assert.Equal(TetrominoType.T, engine.NextPieceType);
 
-        // блокирует O и спавнит T
-        engine.HardDrop(); 
+        engine.HardDrop();
+        engine.Tick(engine.LockDelayMilliseconds);   // реальная фиксация
 
         Assert.Equal(TetrominoType.I, engine.NextPieceType);
     }
@@ -273,9 +276,13 @@ public class GameEngineTests
     {
         var engine = new GameEngine(
             new Board(width: 4, height: 2),
-            new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O));
+            new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O))
+        {
+            HardDropLockDelayMilliseconds = 0
+        };
 
-        engine.HardDrop();  // I заполняет ряд 1 → 1 линия
+        engine.HardDrop();
+
         Assert.Equal(1, engine.LinesCleared);
         Assert.Equal(100, engine.Score);
     }
@@ -301,21 +308,23 @@ public class GameEngineTests
     [Fact]
     public void Tetris_FourLines_ClearsBoard_AndScoresTetrisBonus()
     {
-        var engine = new GameEngine(
-            new Board(width: 4, height: 4),
-            new FixedPieceProvider(startX: 0,
-                TetrominoType.I, TetrominoType.I,
-                TetrominoType.I, TetrominoType.I,
-                TetrominoType.O));
+        var board = new Board(width: 4, height: 4);
+        board.Lock(new Tetromino(TetrominoType.I, startX: 0, startY: 1));
+        board.Lock(new Tetromino(TetrominoType.I, startX: 0, startY: 2));
+        board.Lock(new Tetromino(TetrominoType.I, startX: 0, startY: 3));
 
-        engine.HardDrop();   // ряд 3
-        engine.HardDrop();   // ряд 2
-        engine.HardDrop();   // ряд 1
-        engine.HardDrop();   // ряд 0 → Tetris
+        var engine = new GameEngine(
+            board,
+            new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O))
+        {
+            HardDropLockDelayMilliseconds = 0
+        };
+
+        Assert.Equal(GameStatus.Playing, engine.Status);   // спавн не ушёл в GameOver
+        engine.HardDrop();
 
         Assert.Equal(4, engine.LinesCleared);
         Assert.Equal(1500, engine.Score);
-        Assert.Equal(GameStatus.Playing, engine.Status);
     }
 
     [Fact]
@@ -329,19 +338,42 @@ public class GameEngineTests
     public void LockAndClear_FourLines_AppliesTetrisBonus()
     {
         var board = new Board(width: 4, height: 4);
-        // Заполняем ряды 0..2, оставляя ряд 3 пустым — затем I закроет Tetris
-        board.Lock(new Tetromino(TetrominoType.O, 0, 0)); // ряд 0: 0,1 — нет, O заполняет 0..1 по X и 0..1 по Y
-                                                          // Заполнить ряды вручную:
-        board.Lock(new Tetromino(TetrominoType.I, 0, 0)); // ряд 0 полный
-        board.Lock(new Tetromino(TetrominoType.I, 0, 1)); // ряд 1 полный
-        board.Lock(new Tetromino(TetrominoType.I, 0, 2)); // ряд 2 полный
-                                                          // Ряд 3 пуст — движок должен получить I и упасть в ряд 3
-        var engine = new GameEngine(board, new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O));
-        // Но Lock() не очищает линии! Ряды 0..2 полные — надо ClearFullLines() не вызывать,
-        // чтобы движок сам это сделал при следующем LockAndClear.
+        // Заполняем ряды 1, 2, 3 — оставляем ряд 0 свободным для спавна
+        board.Lock(new Tetromino(TetrominoType.I, 0, 1));
+        board.Lock(new Tetromino(TetrominoType.I, 0, 2));
+        board.Lock(new Tetromino(TetrominoType.I, 0, 3));
+
+        var engine = new GameEngine(
+            board,
+            new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O))
+        {
+            HardDropLockDelayMilliseconds = 0   // мгновенная фиксация
+        };
 
         engine.HardDrop();
 
+        Assert.Equal(4, engine.LinesCleared);
+        Assert.Equal(1500, engine.Score);
+    }
+
+    [Fact]
+    public void LockAndClear_FourLines_AppliesTetrisBonus_ViaLockDelay()
+    {
+        var board = new Board(width: 4, height: 4);
+        board.Lock(new Tetromino(TetrominoType.I, 0, 1));
+        board.Lock(new Tetromino(TetrominoType.I, 0, 2));
+        board.Lock(new Tetromino(TetrominoType.I, 0, 3));
+
+        var engine = new GameEngine(
+            board,
+            new FixedPieceProvider(startX: 0, TetrominoType.I, TetrominoType.O));
+
+        // Фигура уже на земле (не может упасть) — ждём lock delay
+        Assert.True(engine.IsGrounded);
+
+        bool locked = engine.Tick(engine.LockDelayMilliseconds);
+
+        Assert.True(locked);
         Assert.Equal(4, engine.LinesCleared);
         Assert.Equal(1500, engine.Score);
     }
