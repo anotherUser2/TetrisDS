@@ -50,6 +50,18 @@ public sealed class GameEngine
         init => _hardDropLockDelayOverride = value;
     }
 
+    private IReadOnlyList<(int X, int Y)>? _pendingHardDropCells;
+
+    /// <summary>
+    /// Информация о событии HardDrop: куда приземлилась фигура и какие клетки она заняла.
+    /// </summary>
+    public sealed record HardDropInfo(
+        TetrominoType PieceType,
+        IReadOnlyList<(int X, int Y)> Cells);
+
+    /// <summary>Событие: фигура зафиксирована после HardDrop. Вызывается ПОСЛЕ Lock.</summary>
+    public event EventHandler<HardDropInfo>? HardDropped;
+
     public GameEngine(Board board, IPieceProvider pieceProvider)
     {
         _board = board;
@@ -134,22 +146,29 @@ public sealed class GameEngine
 
         // Телепорт до позиции приземления (без MoveDown-цикла, чтобы не трогать lock delay)
         int ghostY = GetGhostY();
-        _currentPiece.Y = ghostY;
 
+        _currentPiece.Y = ghostY;
         _fallAccumulatedMs = 0;
+
+        // Собираем клетки ДО фиксации (Lock сделает их занятыми)
+        var cells = _currentPiece.GetAbsoluteCells()
+            .Where(c => c.Y >= 0 && c.Y < _board.Height)
+            .ToList();
 
         if (HardDropLockDelayMilliseconds == 0)
         {
-            LockAndClear();
+            _board.Lock(_currentPiece);
+            HardDropped?.Invoke(this, new HardDropInfo(_currentPiece.Type, cells));
+            // Дальше стандартный LockAndClear без повторного Lock
+            int cleared = _board.ClearFullLines();
+            ApplyClear(cleared);
+            SpawnNewPiece();
             return;
         }
 
-        // Начинаем lock delay с нуля — как при обычном касании.
-        // Дальнейшее накопление времени происходит в Tick().
+        // С lock delay — фиксация позже, событие вызовется в LockAndClear
         _lockDelayAccumulatedMs = 0;
-        // _lockResetsUsed НЕ сбрасываем — лимит общий на фигуру.
-        // (Если хочется отдельный лимит для HardDrop — заведите отдельный счётчик,
-        // но Guideline-поведение — общий.)
+        _pendingHardDropCells = cells;   // сохранить для отложенного события
     }
 
     /// <summary>
@@ -190,7 +209,7 @@ public sealed class GameEngine
         if (_lockDelayAccumulatedMs < LockDelayMilliseconds)
             return false;
 
-        LockAndClear();
+        LockAndClear(fromHardDrop: _pendingHardDropCells is not null);
         return true;
     }
 
@@ -207,17 +226,27 @@ public sealed class GameEngine
         _lockResetsUsed++;
     }
 
-    private void LockAndClear()
+    private void LockAndClear(bool fromHardDrop = false)
     {
         _board.Lock(_currentPiece);
-        int cleared = _board.ClearFullLines();
-        if (cleared > 0)
+
+        if (fromHardDrop && _pendingHardDropCells is not null)
         {
-            LinesCleared += cleared;
-            Score += Scoring.ForLinesCleared(cleared, Level);
-            Level = LinesCleared / 10 + 1;
+            HardDropped?.Invoke(this, new HardDropInfo(_currentPiece.Type, _pendingHardDropCells));
+            _pendingHardDropCells = null;
         }
+
+        int cleared = _board.ClearFullLines();
+        ApplyClear(cleared);
         SpawnNewPiece();
+    }
+
+    private void ApplyClear(int cleared)
+    {
+        if (cleared <= 0) return;
+        LinesCleared += cleared;
+        Score += Scoring.ForLinesCleared(cleared, Level);
+        Level = LinesCleared / 10 + 1;
     }
 
     public int GetGhostY()

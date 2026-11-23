@@ -1,6 +1,9 @@
 ﻿using System.Windows.Input;
 using System.Windows.Threading;
 using Tetris.Core;
+using Tetris.Wpf.Effects;
+using Tetris.Wpf.Effects.Factories;
+using static Tetris.Core.GameEngine;
 
 namespace Tetris.Wpf.ViewModels;
 
@@ -14,6 +17,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     private readonly DispatcherTimer _timer;
     private readonly GameEngine _engine;
+    
     private int _score, _level, _lines, _lastCleared, _prevLinesCleared;
     private string _status = "Playing";
     private bool _showGhost = false;
@@ -56,12 +60,46 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    #region Эффекты
+
+    private readonly EffectManager _effects = new();
+
+    public EffectManager Effects => _effects;
+
+    // переключатель эффектов
+
+    private bool _effectsEnabled = true;
+    public bool EffectsEnabled
+    {
+        get => _effectsEnabled;
+        set => SetProperty(ref _effectsEnabled, value);
+    }
+
+    private void OnEngineHardDrop(object? sender, HardDropInfo info)
+    {
+        if (!EffectsEnabled) return;
+        _effects.OnHardDrop(info, _engine.Board);
+    }
+
+    #endregion Эффекты
+
     public MainViewModel(bool hardDropInstantLock = false)
     {
         _engine = new GameEngine(new Board(10, 20), new RandomPieceProvider())
         {
             HardDropLockDelayMilliseconds = HARD_DROP_INSTANT_LOCK || hardDropInstantLock ? 0 : -1
         };
+
+        _engine.HardDropped += OnEngineHardDrop;
+
+        // Регистрируем доступные эффекты. Легко добавить новый — одна строка.
+        _effects.Register("cracks", CrackEffectFactory.Create);
+
+        _effects.Register("flash", (info, board) =>
+        {
+            // все клетки самой фигуры вспыхивают
+            return new FlashEffect(info.Cells);
+        });
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(FrameMilliseconds) };
         _timer.Tick += OnTick;
@@ -80,6 +118,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         // 2. Шаг движка
         _engine.Tick(FrameMilliseconds);
+
+        _effects.Update(FrameMilliseconds);
 
         // 3. Обновить UI
         SyncStats();
@@ -189,6 +229,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void Dispose() => 
+    public void Dispose()
+    {
         _timer.Stop();
+        _engine.HardDropped -= OnEngineHardDrop;
+    }
 }

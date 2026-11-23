@@ -87,6 +87,10 @@ public sealed class GameBoardControl : FrameworkElement
             foreach (var (x, y) in _vm.CurrentPiece.GetAbsoluteCells())
                 if (y >= 0 && y < board.Height)
                     DrawCell(dc, x, y, color);
+
+            // ── Эффекты ────────────────────────────────────────────
+            foreach (var effect in _vm.Effects.Active)
+                effect.Render(dc, CellSize, _vm.Board.Width, _vm.Board.Height);
         }
     }
 
