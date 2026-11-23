@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Tetris.Core;
 using Tetris.Wpf.ViewModels;
 
@@ -22,8 +23,13 @@ public sealed class GameBoardControl : FrameworkElement
         InvalidateVisual();
     }
 
-    private void OnChanged(object? sender, EventArgs e) =>
-        Dispatcher.Invoke(InvalidateVisual);
+    private void OnChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+            InvalidateVisual();
+        else
+            Dispatcher.BeginInvoke(DispatcherPriority.Render, InvalidateVisual);
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
