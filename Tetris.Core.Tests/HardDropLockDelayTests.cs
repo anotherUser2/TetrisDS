@@ -70,12 +70,31 @@ public class HardDropLockDelayTests
     {
         var engine = new GameEngine(
             new Board(width: 10, height: 20),
+            new FixedPieceProvider(TetrominoType.O, TetrominoType.O, TetrominoType.O));
+
+        engine.HardDrop();
+        engine.Tick(400);
+        Assert.Equal(400, engine.LockDelayAccumulatedMs);
+
+        engine.Rotate();   // O остаётся 2×2 — коллизии нет
+
+        Assert.Equal(0, engine.LockDelayAccumulatedMs);
+    }
+
+    [Fact]
+    public void HardDrop_RotateWithCollision_DoesNotResetLockDelay()
+    {
+        var engine = new GameEngine(
+            new Board(width: 10, height: 20),
             new FixedPieceProvider(TetrominoType.T, TetrominoType.O, TetrominoType.O));
 
         engine.HardDrop();
         engine.Tick(400);
-        engine.Rotate();
-        Assert.Equal(0, engine.LockDelayAccumulatedMs);
+        Assert.Equal(400, engine.LockDelayAccumulatedMs);
+
+        engine.Rotate();   // T на дне: поворот упирается в границу → откат
+
+        Assert.Equal(400, engine.LockDelayAccumulatedMs);
     }
 
     [Fact]

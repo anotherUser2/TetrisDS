@@ -86,11 +86,16 @@ public class LockDelayTests
     {
         var engine = new GameEngine(
             new Board(width: 10, height: 4),
-            new FixedPieceProvider(TetrominoType.T, TetrominoType.O));
+            new FixedPieceProvider(TetrominoType.O, TetrominoType.O));
 
         while (engine.MoveDown()) { }
+        Assert.True(engine.IsGrounded);
+
         engine.Tick(400);
-        engine.Rotate();
+        Assert.Equal(400, engine.LockDelayAccumulatedMs);
+
+        engine.Rotate();   // O остаётся 2×2, коллизии нет → OnSuccessfulMove сработает
+
         Assert.Equal(0, engine.LockDelayAccumulatedMs);
     }
 
