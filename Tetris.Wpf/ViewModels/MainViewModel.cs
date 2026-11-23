@@ -16,7 +16,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly GameEngine _engine;
     private int _score, _level, _lines, _lastCleared, _prevLinesCleared;
     private string _status = "Playing";
-    private bool _showGhost = true;
+    private bool _showGhost = false;
 
     // ── Key repeat ───────────────────────────────────────────
     private int _leftRepeatAccum, _rightRepeatAccum, _downRepeatAccum;
