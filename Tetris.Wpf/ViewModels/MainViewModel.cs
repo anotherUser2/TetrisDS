@@ -24,6 +24,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public Tetromino CurrentPiece => _engine.CurrentPiece;
     public TetrominoType NextPieceType => _engine.NextPieceType;
     public GameStatus GameStatus => _engine.Status;
+    private const int FrameMilliseconds = 16;   // ≈60 FPS
 
     public int Score { get => _score; private set => SetProperty(ref _score, value); }
     public int Level { get => _level; private set => SetProperty(ref _level, value); }
@@ -42,10 +43,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public MainViewModel()
+    private const bool HARD_DROP_INSTANT_LOCK = true;
+
+    public MainViewModel(bool hardDropInstantLock = false)
     {
-        _engine = new GameEngine(new Board(10, 20), new RandomPieceProvider());
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _engine = new GameEngine(new Board(10, 20), new RandomPieceProvider())
+        {
+            HardDropLockDelayMilliseconds = HARD_DROP_INSTANT_LOCK || hardDropInstantLock ? 0 : -1
+        };
+
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(FrameMilliseconds) };
         _timer.Tick += OnTick;
         SyncStats();
     }
@@ -63,18 +70,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int GetGhostY() => _engine.GetGhostY();
     public int TickMilliseconds => LevelSpeed.IntervalMilliseconds(Level);
 
-    private void OnTick(object? sender, EventArgs e) => Step();
-
-    public void Step()
+    private void OnTick(object? sender, EventArgs e)
     {
-        _engine.Tick();
+        Step(FrameMilliseconds);
+    }
+
+    public void Step(int deltaMs)
+    {
+        _engine.Tick(deltaMs);
         SyncStats();
-
-        //int before = _engine.LinesCleared;
-        //LastCleared = _engine.LinesCleared - before;
-
         Redraw();
-
         if (_engine.Status == GameStatus.GameOver)
         {
             _timer.Stop();
@@ -119,7 +124,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         if (Level != previousLevel)
         {
-            _timer.Interval = TimeSpan.FromMilliseconds(LevelSpeed.IntervalMilliseconds(Level));
             OnPropertyChanged(nameof(TickMilliseconds));
         }
     }

@@ -120,4 +120,17 @@ public sealed class Board
 
         return true;
     }
+
+    /// <summary>
+    /// Может ли фигура сдвинуться на одну клетку вниз (без изменения X/Shape).
+    /// </summary>
+    public bool CanPlaceBelow(Tetromino piece)
+    {
+        foreach (var (x, y) in piece.GetAbsoluteCells())
+        {
+            if (y + 1 >= Height) return false;
+            if (y + 1 >= 0 && _grid[y + 1, x] != 0) return false;
+        }
+        return true;
+    }
 }

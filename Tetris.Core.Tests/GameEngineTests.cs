@@ -95,7 +95,7 @@ public class GameEngineTests
         while (engine.MoveDown()) { }
 
         // Теперь фигура не может двигаться дальше — Tick должен её зафиксировать
-        bool locked = engine.Tick();
+        bool locked = engine.Tick(engine.LockDelayMilliseconds);
 
         Assert.True(locked);
         Assert.True(engine.Board.IsOccupied(3, 3));
@@ -105,15 +105,14 @@ public class GameEngineTests
     }
 
     [Fact]
-    public void HardDrop_LocksAtBottom()
+    public void HardDrop_MovesPieceToBottom()
     {
-        var board = new Board(10, 20);
-        var t0 = TetrominoType.O;
-        var fpp = new FixedPieceProvider(t0, t0);
-        var engine = new GameEngine(board, fpp);
+        var engine = new GameEngine(new Board(10, 20), new FixedPieceProvider(TetrominoType.O, TetrominoType.O));
         engine.HardDrop();
-        Assert.True(engine.Board.IsOccupied(3, 19));
-        Assert.True(engine.Board.IsOccupied(4, 19));
+        // Фигура на земле, но не зафиксирована (lock delay ещё идёт)
+        Assert.True(engine.IsGrounded);
+        Assert.Equal(18, engine.CurrentPiece.Y);   // O высотой 2, доска 20 → Y=18
+        Assert.False(engine.Board.IsOccupied(3, 19));
     }
 
     [Fact]
